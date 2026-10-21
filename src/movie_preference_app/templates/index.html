@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Movie Preference Analysis</title>
+  <style>
+    :root {
+      --bg: #f5f6fa; --card: #ffffff; --text: #1e2749; --muted: #6b7280;
+      --accent: #5b5bd6; --accent-dark: #4646b8; --border: #e2e4ef;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { background: linear-gradient(135deg, #4646b8, #5b5bd6); color: #fff; padding: 2rem 1.5rem; }
+    header h1 { margin: 0 0 .25rem; font-size: 1.6rem; }
+    header p { margin: 0; opacity: .85; }
+    main { max-width: 1000px; margin: 0 auto; padding: 1.5rem; }
+    form.card, section.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 1.25rem; }
+    .fields { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; }
+    label { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; color: var(--muted); }
+    input { padding: .5rem .6rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; width: 130px; }
+    button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: .55rem 1.4rem; font-size: 1rem; cursor: pointer; }
+    button:hover { background: var(--accent-dark); }
+    .stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .stat { background: var(--bg); border-radius: 8px; padding: .75rem 1.25rem; min-width: 140px; }
+    .stat .value { font-size: 1.4rem; font-weight: 600; }
+    .stat .label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .error { background: #fdecea; color: #a4262c; border: 1px solid #f5c6c0; border-radius: 8px; padding: .8rem 1rem; margin-bottom: 1rem; }
+    h2 { font-size: 1.1rem; margin: 1.25rem 0 .5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); }
+    th { background: var(--bg); font-weight: 600; position: sticky; top: 0; }
+    .scroll { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+    footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 1rem; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Movie Preference Analysis</h1>
+  <p>Cluster MovieLens users by genre preferences and recommend unseen movies.</p>
+</header>
+<main>
+  <form class="card" method="post" action="{{ url_for('index') }}">
+    <div class="fields">
+      <label>Clusters
+        <input type="number" name="clusters" min="2" value="{{ clusters }}" required>
+      </label>
+      <label>User ID <small>(blank = most active)</small>
+        <input type="number" name="user_id" min="1" value="{{ user_id if user_id is not none else '' }}">
+      </label>
+      <label>Top N recommendations
+        <input type="number" name="top_n" min="1" value="{{ top_n }}" required>
+      </label>
+      <button type="submit">Run Analysis</button>
+    </div>
+  </form>
+
+  {% if error %}
+    <div class="error"><strong>Error:</strong> {{ error }}</div>
+  {% endif %}
+
+  {% if ran %}
+    <section class="card">
+      <div class="stats">
+        <div class="stat"><div class="value">{{ users }}</div><div class="label">Users</div></div>
+        <div class="stat"><div class="value">{{ "{:,}".format(movies_count) }}</div><div class="label">Movies</div></div>
+        <div class="stat"><div class="value">{{ "{:,}".format(ratings_count) }}</div><div class="label">Ratings</div></div>
+        <div class="stat"><div class="value">{{ "%.3f"|format(silhouette) if silhouette is not none else "n/a" }}</div><div class="label">Silhouette</div></div>
+        <div class="stat"><div class="value">#{{ cluster_id }}</div><div class="label">Cluster of user {{ user_id }}</div></div>
+      </div>
+
+      <h2>Recommendations for user {{ user_id }}</h2>
+      {% if recommendations %}
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Movie</th><th>Genres</th>
+              <th>Avg rating</th><th>Ratings</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for row in recommendations %}
+            <tr>
+              <td>{{ row.title }}</td>
+              <td>{{ row.genres }}</td>
+              <td>{{ "%.1f"|format(row.cluster_average_rating) }}</td>
+              <td>{{ row.cluster_rating_count }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p>No highly rated unseen movies from other users in this cluster.</p>
+      {% endif %}
+
+      <h2>Average genre rating by cluster</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Cluster</th>{% for genre in genres %}<th>{{ genre }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+          {% for cluster, values in genre_summary.items() %}
+            <tr>
+              <td><strong>#{{ cluster }}</strong></td>
+              {% for v in values.values() %}<td>{{ v }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Cluster visualization</h2>
+      <img src="{{ url_for('outputs', filename='movie_clusters.png') }}?v={{ range(100000) | random }}" alt="PCA scatter plot of user clusters" style="max-width:100%;border-radius:8px;">
+    </section>
+  {% else %}
+    <section class="card">
+      <p>Set the options above and click <strong>Run Analysis</strong>. Uses <code>ratings.csv</code> and <code>movies.csv</code> from the project root.</p>
+    </section>
+  {% endif %}
+</main>
+<footer>Movie Preference Analysis &middot; MovieLens Latest Small dataset</footer>
+</body>
+</html>

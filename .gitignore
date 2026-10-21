@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+
+# MovieLens source data and generated analysis artifacts
+ratings.csv
+movies.csv
+outputs/
+movie_clusters.png
+user_clusters.csv
+sample_recommendations.csv
